@@ -32,11 +32,22 @@ set "INCLUDE=%PLUGIN_SDK_DIR%\plugin_vc;%PLUGIN_SDK_DIR%\plugin_vc\game_vc;%PLUG
 if defined DIRECTX9_SDK_DIR set "INCLUDE=%INCLUDE%;%DIRECTX9_SDK_DIR%\Include"
 if defined DIRECTX9_SDK_DIR set "LIB=%LIB%;%DIRECTX9_SDK_DIR%\Lib\x86"
 
+rem 4b. Заголовки injector и hooking: в разных версиях SDK они лежат в разных папках, поэтому ищем сами
+set "INCLUDE=%INCLUDE%;%PLUGIN_SDK_DIR%;%PLUGIN_SDK_DIR%\hooking"
+for /d %%d in ("%PLUGIN_SDK_DIR%\*") do call set "INCLUDE=%%INCLUDE%%;%%d"
+set "INJFOUND="
+for /f "delims=" %%h in ('dir /s /b "%PLUGIN_SDK_DIR%\injector.hpp" 2^>nul') do if not defined INJFOUND call :addinj "%%~dph"
+if not defined INJFOUND echo Предупреждение: injector.hpp в Plugin-SDK не найден. Если сборка упадёт на injector, пришлите build_log.txt.
+
 rem 5. Сборка
 if not exist "%OUT%" mkdir "%OUT%"
 if exist "%OUT%\HeroMod.asi" del /q "%OUT%\HeroMod.asi"
+set "CPPSTD=/std:c++latest"
+cl > "%LOG%" 2>&1
+echo.>> "%LOG%"
+echo Флаг стандарта: %CPPSTD%>> "%LOG%"
 echo Компилирую...
-cl /nologo /LD /MT /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NON_CONFORMING_SWPRINTFS /DGTAVC /DPLUGIN_SGV_10EN /DNDEBUG "%SRC%" /Fo"%OUT%\\" /Fe"%OUT%\HeroMod.asi" /link "%SDKLIB%" user32.lib > "%LOG%" 2>&1
+cl /nologo /LD /MT /O2 /EHsc %CPPSTD% /D_CRT_SECURE_NO_WARNINGS /D_CRT_NON_CONFORMING_SWPRINTFS /DGTAVC /DPLUGIN_SGV_10EN /DNDEBUG "%SRC%" /Fo"%OUT%\\" /Fe"%OUT%\HeroMod.asi" /link "%SDKLIB%" user32.lib >> "%LOG%" 2>&1
 if not exist "%OUT%\HeroMod.asi" goto :fail
 
 rem 6. Если есть game_path.txt (путь к папке игры), копируем плагин сразу туда
@@ -89,3 +100,12 @@ echo Чаще всего виноваты строки с "// VERIFY" в HeroMod
 echo Пришлите содержимое build_log.txt, и код можно будет поправить.
 if not defined CI pause
 exit /b 1
+
+:addinj
+set "INJFOUND=1"
+set "D=%~1"
+if "%D:~-1%"=="\" set "D=%D:~0,-1%"
+set "INCLUDE=%INCLUDE%;%D%"
+for %%p in ("%D%\..") do set "INCLUDE=%INCLUDE%;%%~fp"
+echo Найден injector: %D%
+exit /b 0
