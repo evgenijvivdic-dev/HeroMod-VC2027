@@ -5,19 +5,7 @@
 //  * F10 в игре    -> аварийная остановка: герой бросает команду, управление возвращается игроку
 //  Свободный мир: F5 розыск=0 | F6/F7 плотность улиц | F8 быстрое время | F3 запомнить точку, F4 вернуться
 //  Сборка: проект Plugin-SDK для Vice City (Win32, Release) -> HeroMod.dll -> переименовать в HeroMod.asi
-//
-// Plugin-SDK (VC). Имена полей/перечислений помечены // VERIFY: они могут отличаться
-// в вашей версии SDK - сверьте с заголовками (CPed.h, CVehicle.h, CAutoPilot.h, CPad.h).
-// Запасные макросы Plugin-SDK для Vice City (если не заданы при сборке)
-#ifndef GTAGAME_NAME
-#define GTAGAME_NAME "Vice City"
-#endif
-#ifndef GTAGAME_ABBR
-#define GTAGAME_ABBR "VC"
-#endif
-#ifndef GTAGAME_ABBRLOW
-#define GTAGAME_ABBRLOW "vc"
-#endif
+
 #include "plugin.h"
 #include "CMessages.h"
 #include "CWorld.h"
@@ -70,7 +58,7 @@ struct Executor {
     DWORD t0 = 0;
 
     static void ReleaseControl() {
-        CPad::GetPad(0)->DisablePlayerControls = false; // VERIFY
+        CPad::GetPad(0)->DisablePlayerControls = false;
     }
 
     void Finish(const char *st) {
@@ -80,11 +68,11 @@ struct Executor {
     }
 
     void StopAll(CPlayerPed *p, const char *st) {
-        p->ClearObjective();                              // VERIFY (или SetObjective(OBJECTIVE_NONE))
-        if (p->m_bInVehicle && p->m_pMyVehicle) {
-            CVehicle *v = p->m_pMyVehicle;
-            v->m_autoPilot.m_nCarMission = MISSION_NONE;  // VERIFY
-            v->m_status = STATUS_PLAYER;                  // VERIFY: вернуть машину игроку
+        p->ClearObjective();
+        if (p->m_bInVehicle && p->m_pVehicle) {
+            CVehicle *v = p->m_pVehicle;
+            v->m_autoPilot.m_nCarMission = MISSION_NONE;
+            v->m_nStatus = eEntityStatus::STATUS_PLAYER;
         }
         Finish(st);
     }
@@ -94,7 +82,7 @@ struct Executor {
         float bd = maxDist;
         for (int i = 0; i < CPools::ms_pVehiclePool->m_nSize; i++) {
             CVehicle *v = CPools::ms_pVehiclePool->GetAt(i);
-            if (!v || v->m_pDriver) continue;             // VERIFY: поле водителя
+            if (!v || v->m_pDriver) continue;
             float d = (v->GetPosition() - pos).Magnitude();
             if (d < bd) { bd = d; best = v; }
         }
@@ -114,31 +102,31 @@ struct Executor {
         if (c == "goto") {
             if (p->m_bInVehicle) { Finish("failed"); return; }
             target = CVector(x, y, CWorld::FindGroundZForCoord(x, y));
-            p->SetObjective(OBJECTIVE_GOTO_AREA_ON_FOOT, target); // VERIFY
-            p->SetMoveState(PEDMOVE_RUN);                          // VERIFY
-            CPad::GetPad(0)->DisablePlayerControls = true;         // VERIFY
+            p->SetObjective(OBJECTIVE_GOTO_AREA_ON_FOOT, target);
+            p->SetMoveState(PEDMOVE_RUN);
+            CPad::GetPad(0)->DisablePlayerControls = true;
             type = Cmd::Goto;
         } else if (c == "enter_vehicle") {
             if (p->m_bInVehicle) { Finish("done"); return; }
             veh = NearestFreeVehicle(p->GetPosition(), 40.0f);
             if (!veh) { Finish("failed"); return; }
-            p->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, veh);   // VERIFY
+            p->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, veh);
             CPad::GetPad(0)->DisablePlayerControls = true;
             type = Cmd::EnterVehicle;
         } else if (c == "exit_vehicle") {
-            if (!p->m_bInVehicle || !p->m_pMyVehicle) { Finish("done"); return; }
-            p->SetObjective(OBJECTIVE_LEAVE_CAR, p->m_pMyVehicle); // VERIFY
+            if (!p->m_bInVehicle || !p->m_pVehicle) { Finish("done"); return; }
+            p->SetObjective(OBJECTIVE_LEAVE_CAR, p->m_pVehicle);
             CPad::GetPad(0)->DisablePlayerControls = true;
             type = Cmd::ExitVehicle;
         } else if (c == "drive_to") {
-            if (!p->m_bInVehicle || !p->m_pMyVehicle) { Finish("failed"); return; }
-            veh = p->m_pMyVehicle;
+            if (!p->m_bInVehicle || !p->m_pVehicle) { Finish("failed"); return; }
+            veh = p->m_pVehicle;
             target = CVector(x, y, CWorld::FindGroundZForCoord(x, y));
-            veh->m_status = STATUS_PHYSICS;                        // VERIFY: отдать машину автопилоту
-            veh->m_autoPilot.m_nCarMission = MISSION_GOTOCOORDS;   // VERIFY
-            veh->m_autoPilot.m_vecDestinationCoors = target;       // VERIFY
-            veh->m_autoPilot.m_nCruiseSpeed = 20;                  // VERIFY
-            veh->m_autoPilot.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS; // VERIFY
+            veh->m_nStatus = eEntityStatus::STATUS_PHYSICS;
+            veh->m_autoPilot.m_nCarMission = MISSION_GOTOCOORDS;
+            veh->m_autoPilot.m_vecDestinationCoors = target;
+            veh->m_autoPilot.m_nCruiseSpeed = 20;
+            veh->m_autoPilot.m_nDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
             CPad::GetPad(0)->DisablePlayerControls = true;
             type = Cmd::DriveTo;
         } else {
@@ -155,13 +143,13 @@ struct Executor {
             if ((pos - target).Magnitude2D() < 2.5f) StopAll(p, "done");
             break;
         case Cmd::EnterVehicle:
-            if (p->m_bInVehicle && p->m_pMyVehicle == veh) Finish("done");
+            if (p->m_bInVehicle && p->m_pVehicle == veh) Finish("done");
             break;
         case Cmd::ExitVehicle:
             if (!p->m_bInVehicle) Finish("done");
             break;
         case Cmd::DriveTo:
-            if (!p->m_bInVehicle || p->m_pMyVehicle != veh) StopAll(p, "failed");
+            if (!p->m_bInVehicle || p->m_pVehicle != veh) StopAll(p, "failed");
             else if ((veh->GetPosition() - target).Magnitude2D() < 10.0f) StopAll(p, "done");
             break;
         default: break;
@@ -180,7 +168,7 @@ static bool Pressed(int vk) {
 static void Say(const wchar_t *text) {
     static std::wstring buf;
     buf = text;
-    CMessages::AddMessageJumpQ((wchar_t *)buf.c_str(), 2500, 0);   // VERIFY: в VC текст wchar_t*
+    CMessages::AddMessageJumpQ((wchar_t *)buf.c_str(), 2500, 0);
 }
 static void OpenWorldTick(CPlayerPed *p) {
     static bool freeRoam = false, fastClock = false, hasSaved = false;
@@ -189,23 +177,23 @@ static void OpenWorldTick(CPlayerPed *p) {
 
     if (Pressed(VK_F5)) { freeRoam = !freeRoam; Say(freeRoam ? L"Free roam: ON" : L"Free roam: OFF"); }
     if (freeRoam && p->m_pWanted) {
-        p->m_pWanted->m_nWantedLevel = 0;                 // VERIFY
-        p->m_pWanted->m_nChaos = 0;                       // VERIFY
+        p->m_pWanted->m_nWantedLevel = 0;
+        p->m_pWanted->m_nChaosLevel = 0;
     }
     bool changed = false;
     if (Pressed(VK_F6)) { density = (std::min)(density + 0.25f, 2.0f); changed = true; }
     if (Pressed(VK_F7)) { density = (std::max)(density - 0.25f, 0.25f); changed = true; }
-    CPopulation::PedDensityMultiplier = density;          // VERIFY
-    CCarCtrl::CarDensityMultiplier = density;             // VERIFY
+    CPopulation::PedDensityMultiplier = density;
+    CCarCtrl::MaxNumberOfCarsInUse = (int)(12.0f * density);
     if (changed) { wchar_t msg[32]; swprintf(msg, 32, L"Traffic density x%.2f", density); Say(msg); }
 
     if (Pressed(VK_F8)) { fastClock = !fastClock; Say(fastClock ? L"Fast clock: ON" : L"Fast clock: OFF"); }
-    CClock::ms_nMillisecondsPerGameMinute = fastClock ? 250 : 1000;   // VERIFY
+    CClock::ms_nMillisecondsPerGameMinute = fastClock ? 250 : 1000;
 
     if (Pressed(VK_F3)) { saved = p->GetPosition(); hasSaved = true; Say(L"Position saved"); }
     if (Pressed(VK_F4) && hasSaved) {
         CVector to = saved; to.z += 1.0f;
-        p->Teleport(to);                                  // VERIFY: или SetPosition
+        p->Teleport(to);
         Say(L"Teleported");
     }
 }
@@ -251,8 +239,8 @@ public:
                     if (v && (v->GetPosition() - pos).Magnitude() < R) cars++;
                 }
                 bool inCar = p->m_bInVehicle;
-                float speed = inCar && p->m_pMyVehicle
-                                ? p->m_pMyVehicle->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
+                float speed = inCar && p->m_pVehicle
+                                ? p->m_pVehicle->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
 
                 std::ostringstream js;
                 js << "{"
@@ -264,30 +252,3 @@ public:
                    << ",\"in_vehicle\":" << (inCar ? "true" : "false")
                    << ",\"speed\":" << speed
                    << ",\"hour\":" << (int)CClock::ms_nGameClockHours
-                   << ",\"minute\":" << (int)CClock::ms_nGameClockMinutes
-                   << ",\"weather\":" << (int)CWeather::NewWeatherType
-                   << ",\"peds_near\":" << peds
-                   << ",\"cars_near\":" << cars
-                   << ",\"cmd_id\":" << exec.id
-                   << ",\"cmd_status\":\"" << exec.status << "\""
-                   << "}";
-                { std::ofstream f("state.tmp"); f << js.str(); }
-                std::remove("state.json");
-                std::rename("state.tmp", "state.json");
-            }
-
-            // ---- 3) субтитры ----
-            if (now - lastAns >= 500) {
-                lastAns = now;
-                std::ifstream f("answer.txt");
-                if (!f) return;
-                std::string s((std::istreambuf_iterator<char>(f)), {});
-                f.close();
-                std::remove("answer.txt");
-                if (s.empty()) return;
-                std::wstring w(s.begin(), s.end());
-                CMessages::AddMessageJumpQ((wchar_t *)w.c_str(), 6000, 0);
-            }
-        };
-    }
-} heroMod;
