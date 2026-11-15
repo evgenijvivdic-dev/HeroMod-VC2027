@@ -18,6 +18,11 @@
 #ifndef GTAGAME_ABBRLOW
 #define GTAGAME_ABBRLOW "vc"
 #endif
+#include <windows.h>
+#include <cstdint>
+#include <cstddef>
+#include <cstring>
+#include <type_traits>
 #include "plugin.h"
 #include "CMessages.h"
 #include "CWorld.h"
