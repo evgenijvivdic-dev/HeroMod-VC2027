@@ -1,0 +1,106 @@
+# Автосборка HeroMod.asi на виртуальной Windows GitHub.
+# Plugin-SDK не хранит готовых проектов: его решение plugin.sln надо сначала сгенерировать через premake,
+# затем собрать библиотеку Plugin_VC, и только потом build.bat соберёт HeroMod.asi.
+# Запуск: вкладка Actions -> "Build HeroMod.asi" -> Run workflow. Результат: раздел Artifacts.
+name: Build HeroMod.asi
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["Source/**", "build.bat", ".github/workflows/build.yml"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PLUGIN_SDK_DIR: ${{ github.workspace }}\plugin-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Скачать Plugin-SDK
+        uses: actions/checkout@v4
+        with:
+          repository: DK22Pac/plugin-sdk
+          path: plugin-sdk
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: DirectX SDK (необязательно)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install directx-sdk -y --no-progress
+          $p = "C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)"
+          if (Test-Path $p) { "DIRECTX9_SDK_DIR=$p" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
+
+      - name: Подготовить premake5
+        shell: pwsh
+        run: |
+          $pmPath = $null
+          $pm = Get-ChildItem -Path plugin-sdk -Recurse -Filter premake5.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($pm) { $pmPath = $pm.FullName }
+          if (-not $pmPath) {
+            Write-Host "premake5.exe в SDK нет, скачиваю"
+            try {
+              Invoke-WebRequest -Uri "https://github.com/premake/premake-core/releases/download/v5.0.0-beta2/premake-5.0.0-beta2-windows.zip" -OutFile premake.zip
+              Expand-Archive premake.zip -DestinationPath premake-bin -Force
+              $pm = Get-ChildItem -Path premake-bin -Recurse -Filter premake5.exe | Select-Object -First 1
+              if ($pm) { $pmPath = $pm.FullName }
+            } catch { Write-Host "Скачивание не удалось: $_" }
+          }
+          if (-not $pmPath) {
+            choco install premake -y --no-progress
+            $c = Get-Command premake5 -ErrorAction SilentlyContinue
+            if ($c) { $pmPath = $c.Source }
+          }
+          if (-not $pmPath) { throw "premake5 не найден" }
+          Write-Host "premake5: $pmPath"
+          "PREMAKE=$pmPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Сгенерировать решение Plugin-SDK
+        shell: pwsh
+        run: |
+          $lua = Get-ChildItem -Path plugin-sdk -Recurse -Filter premake5.lua | Where-Object { $_.FullName -like "*tools*premake*" } | Select-Object -First 1
+          if (-not $lua) { $lua = Get-ChildItem -Path plugin-sdk -Recurse -Filter premake5.lua | Select-Object -First 1 }
+          if (-not $lua) { throw "premake5.lua не найден в Plugin-SDK" }
+          Write-Host "Скрипт: $($lua.FullName)"
+          Push-Location $env:PLUGIN_SDK_DIR
+          & $env:PREMAKE --file="$($lua.FullName)" --pluginsdkdir="$env:PLUGIN_SDK_DIR" vs2022
+          $code = $LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { throw "premake завершился с кодом $code" }
+
+      - name: Собрать библиотеку Plugin_VC
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path plugin-sdk -Recurse -File | Where-Object { $_.Name -in @("plugin.sln", "plugin.slnx") } | Select-Object -First 1
+          if (-not $sln) { throw "plugin.sln не сгенерирован" }
+          Write-Host "Решение: $($sln.FullName)"
+          msbuild $sln.FullName -t:Plugin_VC -p:Configuration=Release -p:Platform=Win32 -m -nologo
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Через решение не вышло, ищу проект напрямую"
+            $proj = Get-ChildItem -Path plugin-sdk -Recurse -Filter "*.vcxproj" | Where-Object { $_.Name -like "*plugin_vc*" } | Select-Object -First 1
+            if (-not $proj) { throw "Проект Plugin_VC не найден" }
+            msbuild $proj.FullName -p:Configuration=Release -p:Platform=Win32 -m -nologo
+            if ($LASTEXITCODE -ne 0) { throw "Не удалось собрать Plugin_VC" }
+          }
+
+      - name: Собрать HeroMod.asi
+        shell: cmd
+        run: build.bat
+
+      - name: Диагностика при ошибке
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "--- верхний уровень Plugin-SDK ---"
+          Get-ChildItem plugin-sdk | Select-Object -ExpandProperty Name
+          Write-Host "--- решения, проекты и библиотеки ---"
+          Get-ChildItem -Path plugin-sdk -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in ".sln", ".slnx", ".vcxproj", ".lib" } | Select-Object -ExpandProperty FullName
+          if (Test-Path build_log.txt) { Write-Host "--- build_log.txt ---"; Get-Content build_log.txt }
+
+      - name: Сохранить результат
+        uses: actions/upload-artifact@v4
+        with:
+          name: HeroMod
+          path: Release/HeroMod.asi
