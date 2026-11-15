@@ -41,7 +41,7 @@ if not defined INJFOUND echo Предупреждение: injector.hpp в Plugi
 rem 5. Сборка
 if not exist "%OUT%" mkdir "%OUT%"
 if exist "%OUT%\HeroMod.asi" del /q "%OUT%\HeroMod.asi"
-set "CPPSTD=/std:c++20"
+set "CPPSTD=/std:c++latest"
 cl > "%LOG%" 2>&1
 echo.>> "%LOG%"
 echo Флаг стандарта: %CPPSTD%>> "%LOG%"
