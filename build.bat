@@ -27,16 +27,17 @@ set "SDKLIB="
 for /f "delims=" %%f in ('dir /s /b "%PLUGIN_SDK_DIR%\Plugin_VC.lib" 2^>nul') do if not defined SDKLIB set "SDKLIB=%%f"
 if not defined SDKLIB goto :nolib
 
-rem 4. Пути к заголовкам и библиотекам (включая подпапки rw, enums, safetyhook и dxsdk)
-set "INCLUDE=%PLUGIN_SDK_DIR%\plugin_vc;%PLUGIN_SDK_DIR%\plugin_vc\game_vc;%PLUGIN_SDK_DIR%\plugin_vc\game_vc\rw;%PLUGIN_SDK_DIR%\plugin_vc\game_vc\enums;%PLUGIN_SDK_DIR%\shared;%PLUGIN_SDK_DIR%\shared\game;%PLUGIN_SDK_DIR%\shared\rwd3d9;%PLUGIN_SDK_DIR%\shared\dxsdk;%PLUGIN_SDK_DIR%\hooking;%PLUGIN_SDK_DIR%\safetyhook\include;%PLUGIN_SDK_DIR%;%INCLUDE%"
+rem 4. Пути к заголовкам и библиотекам
+set "INCLUDE=%PLUGIN_SDK_DIR%\plugin_vc;%PLUGIN_SDK_DIR%\plugin_vc\game_vc;%PLUGIN_SDK_DIR%\plugin_vc\game_vc\enums;%PLUGIN_SDK_DIR%\shared;%PLUGIN_SDK_DIR%\shared\game;%PLUGIN_SDK_DIR%\shared\rwd3d9;%PLUGIN_SDK_DIR%\shared\dxsdk;%PLUGIN_SDK_DIR%\hooking;%PLUGIN_SDK_DIR%\safetyhook\include;%PLUGIN_SDK_DIR%;%INCLUDE%"
 set "LIB=%PLUGIN_SDK_DIR%\output\lib;%PLUGIN_SDK_DIR%\shared\rwd3d9;%PLUGIN_SDK_DIR%\shared\dxsdk;%LIB%"
 if defined DIRECTX9_SDK_DIR set "INCLUDE=%INCLUDE%;%DIRECTX9_SDK_DIR%\Include"
 if defined DIRECTX9_SDK_DIR set "LIB=%LIB%;%DIRECTX9_SDK_DIR%\Lib\x86"
 
-rem 4b. Заголовки injector (ищем рекурсивно и добавляем саму папку и её родителя)
+rem 4b. Автопоиск injector.hpp и rwcore.h (RenderWare) внутри Plugin-SDK
 set "INJFOUND="
-for /f "delims=" %%h in ('dir /s /b "%PLUGIN_SDK_DIR%\injector.hpp" 2^>nul') do if not defined INJFOUND call :addinj "%%~dph"
-if not defined INJFOUND echo Предупреждение: injector.hpp в Plugin-SDK не найден.
+for /f "delims=" %%h in ('dir /s /b "%PLUGIN_SDK_DIR%\injector.hpp" 2^>nul') do if not defined INJFOUND call :addpath "%%~dph" INJFOUND
+set "RWFOUND="
+for /f "delims=" %%h in ('dir /s /b "%PLUGIN_SDK_DIR%\rwcore.h" 2^>nul') do if not defined RWFOUND call :addpath "%%~dph" RWFOUND
 
 rem 5. Сборка
 if not exist "%OUT%" mkdir "%OUT%"
@@ -91,11 +92,11 @@ echo Полный лог: %LOG%
 if not defined CI pause
 exit /b 1
 
-:addinj
-set "INJFOUND=1"
+:addpath
+set "%~2=1"
 set "D=%~1"
 if "%D:~-1%"=="\" set "D=%D:~0,-1%"
 set "INCLUDE=%INCLUDE%;%D%"
 for %%p in ("%D%\..") do set "INCLUDE=%INCLUDE%;%%~fp"
-echo Найден injector: %D%
+echo Найден путь: %D%
 exit /b 0
